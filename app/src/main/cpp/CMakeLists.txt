@@ -13,9 +13,13 @@ project("native-lib")
 
 # 添加子目录
 add_subdirectory(librtmp)
+# 添加子项目，libyuv 作为一个子项目自己编译，有自己的 CMakeList.txt。
+add_subdirectory(libyuv)
 
 #指定librtmp头文件查找路径
 include_directories(librtmp)
+# 外部头文件路径，因为我们要引用 libyuv.h
+include_directories(libyuv/include)
 
 # Creates and names a library, sets it as either STATIC
 # or SHARED, and provides the relative paths to its source code.
@@ -54,6 +58,8 @@ target_link_libraries( # Specifies the target library.
 
         # 编译的 rtmp 静态库
         rtmp
+
+        yuv
 
         # Links the target library to the log library
         # included in the NDK.

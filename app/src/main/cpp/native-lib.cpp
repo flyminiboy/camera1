@@ -1,6 +1,7 @@
 #include <jni.h>
 #include "LogUtil.h"
 #include "librtmp/rtmp.h"
+#include "libyuv/include/libyuv.h"
 
 extern "C"
 jint connect(JNIEnv* env, jobject thiz, jstring path) {
