@@ -56,6 +56,10 @@ class MainActivity : AppCompatActivity() {
             h = width
         }
 
+        val rtmpClient = RTMPClient()
+        rtmpClient.connect("fff")
+
+
         setUpActionTip()
         binding.mainAction.setOnClickListener {
             if (!isPreview) {
@@ -364,6 +368,14 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+    }
+
+    companion object {
+
+        init {
+            System.loadLibrary("native-lib")
+        }
+
     }
 
 }
