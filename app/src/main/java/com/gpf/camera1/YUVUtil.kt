@@ -1,4 +1,7 @@
 package com.gpf.camera1
 
-class YUVUtil {
+object YUVUtil {
+
+    external fun conver(src: ByteArray, width: Int, height: Int, dst: ByteArray)
+
 }

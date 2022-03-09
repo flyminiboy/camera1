@@ -1,10 +1,30 @@
 #include <jni.h>
 #include "LogUtil.h"
 #include "librtmp/rtmp.h"
-#include "libyuv/include/libyuv.h"
+#include "native-lib.h"
+
+#include <libyuv.h>
+
+using namespace std;
+using namespace libyuv;
+
+
+static const char *RTMPClientClassName = "com/gpf/camera1/RTMPClient";
+static const char *YUVUtilClassName = "com/gpf/camera1/YUVUtil";
+
+static JNINativeMethod RTMPClientMethods[] = {
+        "connect", "(Ljava/lang/String;)I", (jint *)connect
+};
+static JNINativeMethod YUVUtilMethods[] = {
+        "conver", "([BII[B)V", (void *)conver
+};
+
 
 extern "C"
-jint connect(JNIEnv* env, jobject thiz, jstring path) {
+JNIEXPORT
+jint
+JNICALL
+connect(JNIEnv* env, jobject thiz, jstring path) {
     LOGE("connect");
 
     int result = -1;
@@ -20,22 +40,43 @@ jint connect(JNIEnv* env, jobject thiz, jstring path) {
 
 }
 
-jint registNativeMethod(JNIEnv *env) {
+extern "C"
+JNIEXPORT
+void
+JNICALL
+conver(JNIEnv * env, jobject thiz, jbyteArray src, jint width,
+       jint height, jbyteArray dst) {
+
+    // 获取数组指针
+    jbyte *_src = env->GetByteArrayElements(src, nullptr);
+    jbyte *_dst = env->GetByteArrayElements(dst, nullptr);
+
+    // 类型转换
+    unsigned char *pY = reinterpret_cast<unsigned char *>(_src);
+    unsigned char *pUV = reinterpret_cast<unsigned char *>(_dst) + width * height;
+    unsigned char *dst_temp = reinterpret_cast<unsigned char *>(_dst);
+
+    NV12ToABGR(pY, width, pUV, width, dst_temp, width * 4, width, height);
+
+    env->ReleaseByteArrayElements(src, _src, JNI_ABORT);
+    env->ReleaseByteArrayElements(dst, _dst, 0);
+
+}
+
+jint registNativeMethod(JNIEnv *env, const char *className,
+                        const JNINativeMethod methods[], const jint methodSize) {
 
     int result = -1;
 
     do {
         // 获取映射的java类
-        jclass clazz = env->FindClass("com/gpf/camera1/RTMPClient");
+        jclass clazz = env->FindClass(className);
         if (clazz == nullptr) {
             break;
         }
 
-        JNINativeMethod methods_RTMPClient[] = {
-                {"connect", "(Ljava/lang/String;)I", (jint *) connect}
-        };
         // 通过RegisterNatives方法动态注册登记
-        if (env->RegisterNatives(clazz, methods_RTMPClient, sizeof(methods_RTMPClient) / sizeof(JNINativeMethod)) < 0) {
+        if (env->RegisterNatives(clazz, methods, methodSize) < 0) {
             break;
         }
 
@@ -57,7 +98,11 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
             break;
         }
 
-        if (registNativeMethod(env) != JNI_OK) {
+        if (registNativeMethod(env, RTMPClientClassName, RTMPClientMethods, sizeof(RTMPClientMethods) / sizeof(RTMPClientMethods[0])) != JNI_OK) {
+            break;
+        }
+
+        if (registNativeMethod(env, YUVUtilClassName, YUVUtilMethods, sizeof(YUVUtilMethods) / sizeof(YUVUtilMethods[0])) != JNI_OK) {
             break;
         }
 

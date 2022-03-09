@@ -1,5 +1,6 @@
 package com.gpf.camera1
 
+import android.graphics.BitmapFactory
 import android.graphics.ImageFormat
 import android.graphics.SurfaceTexture
 import android.hardware.Camera
@@ -31,13 +32,25 @@ class MainActivity : AppCompatActivity() {
 
     private var isRecord = false
     private var isPreview = false
-    private var encoderHandler: Handler? = null
+
+    private val encoderThread = HandlerThread("encode")
+    private val encoderHandler by lazy {
+        encoderThread.start()
+        Handler(encoderThread.looper)
+    }
+
     private var mediaCodec: MediaCodec? = null
     private var mediaMuxer: MediaMuxer? = null
     private var videoTrack: Int = 0
     private val lock = Any()
 
     private var path: String? = null
+
+    private val converThread = HandlerThread("conver")
+    private val converHander by lazy {
+        converThread.start()
+        Handler(converThread.looper)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -47,8 +60,61 @@ class MainActivity : AppCompatActivity() {
             WindowManager.LayoutParams.FLAG_FULLSCREEN
         )
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        binding = ActivityMainBinding.inflate(layoutInflater)
-        setContentView(binding.root)
+        binding = ActivityMainBinding.inflate(layoutInflater).apply {
+            setContentView(root)
+
+            mainAction.setOnClickListener {
+                if (!isPreview) {
+                    return@setOnClickListener
+                }
+                if (isRecord) {
+                    stopRecord()
+                } else {
+                    startRecord()
+                }
+                setUpActionTip()
+            }
+
+            mainTake.setOnClickListener {
+                flag = true
+            }
+
+            mainTv.surfaceTextureListener = (object : TextureView.SurfaceTextureListener {
+                override fun onSurfaceTextureAvailable(
+                    surface: SurfaceTexture,
+                    width: Int,
+                    height: Int
+                ) {
+                    surfaceTexture = surface
+                    if (hasCameraPermission() && hasWritePermission()) {
+                        startPreview()
+                    } else {
+                        requestCameraPermisson()
+                    }
+                }
+
+                override fun onSurfaceTextureSizeChanged(
+                    surface: SurfaceTexture,
+                    width: Int,
+                    height: Int
+                ) {
+
+                }
+
+                override fun onSurfaceTextureDestroyed(surface: SurfaceTexture): Boolean {
+                    release()
+                    return true
+                }
+
+                override fun onSurfaceTextureUpdated(surface: SurfaceTexture) {
+
+                }
+
+            })
+        }
+
+        setUpActionTip()
+
 
         // TODO 优化 角度问题
         dis = windowManager.defaultDisplay.apply {
@@ -58,53 +124,6 @@ class MainActivity : AppCompatActivity() {
 
         val rtmpClient = RTMPClient()
         rtmpClient.connect("fff")
-
-
-        setUpActionTip()
-        binding.mainAction.setOnClickListener {
-            if (!isPreview) {
-                return@setOnClickListener
-            }
-            if (isRecord) {
-                stopRecord()
-            } else {
-                startRecord()
-            }
-            setUpActionTip()
-        }
-
-        binding.mainTv.surfaceTextureListener = (object : TextureView.SurfaceTextureListener {
-            override fun onSurfaceTextureAvailable(
-                surface: SurfaceTexture,
-                width: Int,
-                height: Int
-            ) {
-                surfaceTexture = surface
-                if (hasCameraPermission() && hasWritePermission()) {
-                    startPreview()
-                } else {
-                    requestCameraPermisson()
-                }
-            }
-
-            override fun onSurfaceTextureSizeChanged(
-                surface: SurfaceTexture,
-                width: Int,
-                height: Int
-            ) {
-
-            }
-
-            override fun onSurfaceTextureDestroyed(surface: SurfaceTexture): Boolean {
-                release()
-                return true
-            }
-
-            override fun onSurfaceTextureUpdated(surface: SurfaceTexture) {
-
-            }
-
-        })
 
     }
 
@@ -194,20 +213,12 @@ class MainActivity : AppCompatActivity() {
 
             //初始化 MediaMuxer（混合器） 将H264文件打包成MP4
             val file = File(filesDir, UUID.randomUUID().toString() + ".mp4")
-            path = file.let {
+            path = file.let { it ->
                 mediaMuxer =
                     MediaMuxer(it.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
-                mediaMuxer?.let {
-//                    因为摄像头本身的视频是旋转了90度，所以设置90度，是为了摆正视频的方向
-//                    还是和摄像头传感器旋转角度相关
-                    it.setOrientationHint(90)
-                }
+                mediaMuxer?.setOrientationHint(90)
                 it.absolutePath
             }
-
-            val encoderThread = HandlerThread("encode")
-            encoderThread.start()
-            encoderHandler = Handler(encoderThread.looper)
 
             isRecord = true
         }
@@ -283,6 +294,27 @@ class MainActivity : AppCompatActivity() {
                         it.addCallbackBuffer(buffer)
                         return@setPreviewCallbackWithBuffer
                     }
+                    // 保存一张图片，表示libyuv介入成功
+                    converHander.post {
+                        if (!flag) {
+                            logE("开始转换")
+                            val dst = ByteArray(data.size)
+                            YUVUtil.conver(data, w, h, dst)
+                            logE("结束转换,耗时 [ ")
+                            val bitmap = BitmapFactory.decodeByteArray(dst, 0, dst.size)
+                            flag = true
+                            runOnUiThread {
+                                // 展示
+
+                                with(binding.mainFrame) {
+                                    visibility = View.VISIBLE
+                                    setImageBitmap(bitmap)
+                                }
+
+                            }
+                        }
+
+                    }
                     encode(nv21Tonv12(data))
                     it.addCallbackBuffer(buffer)
                 }
@@ -296,6 +328,8 @@ class MainActivity : AppCompatActivity() {
         } catch (e: Exception) {
         }
     }
+
+    var flag = false
 
     private fun encode(data: ByteArray) {
         encoderHandler?.let { handler ->
