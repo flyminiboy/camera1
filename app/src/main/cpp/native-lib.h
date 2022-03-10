@@ -10,8 +10,16 @@ JNIEXPORT jint JNICALL
 connect(JNIEnv *env, jobject thiz, jstring path);
 
 JNIEXPORT void JNICALL
-conver(JNIEnv * env, jobject thiz, jbyteArray src, jint width,
+nv21ToI420(JNIEnv * env, jobject thiz, jbyteArray src, jint width,
        jint height, jbyteArray dst);
+
+JNIEXPORT void JNICALL
+i420ToNV21(JNIEnv * env, jobject thiz, jbyteArray src, jint width,
+           jint height, jbyteArray dst);
+
+JNIEXPORT void JNICALL
+rotateI420(JNIEnv * env, jobject thiz, jbyteArray src, jint width,
+           jint height, jbyteArray dst, jint degree);
 
 }
 

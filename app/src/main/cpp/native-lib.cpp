@@ -5,7 +5,6 @@
 
 #include <libyuv.h>
 
-using namespace std;
 using namespace libyuv;
 
 
@@ -13,10 +12,12 @@ static const char *RTMPClientClassName = "com/gpf/camera1/RTMPClient";
 static const char *YUVUtilClassName = "com/gpf/camera1/YUVUtil";
 
 static JNINativeMethod RTMPClientMethods[] = {
-        "connect", "(Ljava/lang/String;)I", (jint *)connect
+        "connect", "(Ljava/lang/String;)I", (jint *) connect
 };
 static JNINativeMethod YUVUtilMethods[] = {
-        "conver", "([BII[B)V", (void *)conver
+        "nv21ToI420", "([BII[B)V", (void *) nv21ToI420,
+        "i420ToNV21", "([BII[B)V", (void *) i420ToNV21,
+        "rotateI420", "([BII[BI)V", (void *) rotateI420
 };
 
 
@@ -24,14 +25,12 @@ extern "C"
 JNIEXPORT
 jint
 JNICALL
-connect(JNIEnv* env, jobject thiz, jstring path) {
+connect(JNIEnv *env, jobject thiz, jstring path) {
     LOGE("connect");
 
     int result = -1;
 
     do {
-
-
 
 
     } while (0);
@@ -44,19 +43,94 @@ extern "C"
 JNIEXPORT
 void
 JNICALL
-conver(JNIEnv * env, jobject thiz, jbyteArray src, jint width,
-       jint height, jbyteArray dst) {
+nv21ToI420(JNIEnv *env, jobject thiz, jbyteArray src, jint width,
+           jint height, jbyteArray dst) {
 
     // 获取数组指针
     jbyte *_src = env->GetByteArrayElements(src, nullptr);
     jbyte *_dst = env->GetByteArrayElements(dst, nullptr);
 
-    // 类型转换
-    unsigned char *pY = reinterpret_cast<unsigned char *>(_src);
-    unsigned char *pUV = reinterpret_cast<unsigned char *>(_dst) + width * height;
-    unsigned char *dst_temp = reinterpret_cast<unsigned char *>(_dst);
+    // Y 大小
+    jint src_y_size = width * height;
+    // u 大小
+    jint src_u_size = (width >> 1) * (height >> 1);
 
-    NV12ToABGR(pY, width, pUV, width, dst_temp, width * 4, width, height);
+    // NV21 yuv格式
+    // Y 起始地址
+    jbyte *src_nv21_y_data = _src;
+    // UV 起始地址
+    jbyte *src_nv21_vu_data = _src + src_y_size;
+
+    // i420 yuv格式
+    jbyte *dst_i420_y_data = _dst;
+    jbyte *dst_i420_u_data = _dst + src_y_size;
+    jbyte *dst_i420_v_data = _dst + src_y_size + src_u_size;
+
+    // 理解 YUV stride
+
+
+    NV21ToI420(reinterpret_cast<const uint8_t *>(src_nv21_y_data), width,
+               reinterpret_cast<const uint8_t *>(src_nv21_vu_data), width,
+               reinterpret_cast<uint8_t *>(dst_i420_y_data), width,
+               reinterpret_cast<uint8_t *>(dst_i420_u_data), width >> 1,
+               reinterpret_cast<uint8_t *>(dst_i420_v_data), width >> 1,
+               width, height);
+
+    env->ReleaseByteArrayElements(src, _src, JNI_ABORT);
+    env->ReleaseByteArrayElements(dst, _dst, 0);
+
+}
+
+extern "C"
+JNIEXPORT
+void
+JNICALL
+rotateI420(JNIEnv *env, jobject thiz, jbyteArray src, jint width,
+           jint height, jbyteArray dst, jint degree) {
+
+    // 获取数组指针
+    jbyte *_src = env->GetByteArrayElements(src, nullptr);
+    jbyte *_dst = env->GetByteArrayElements(dst, nullptr);
+
+    // u 大小
+    jint src_y_size = width * height;
+    jint src_u_size = (width >> 1) * (height >> 1);
+
+    // Y 起始地址
+    jbyte *src_i420_y_data = _src;
+    jbyte *src_i420_u_data = _src + src_y_size;
+    jbyte *src_i420_v_data = _src + src_y_size + src_u_size;
+
+    // i420 yuv格式
+    jbyte *dst_i420_y_data = _dst;
+    jbyte *dst_i420_u_data = _dst + src_y_size;
+    jbyte *dst_i420_v_data = _dst + src_y_size + src_u_size;
+
+    I420Rotate(reinterpret_cast<uint8_t *>(src_i420_y_data), width,
+               reinterpret_cast<uint8_t *>(src_i420_u_data), width >> 1,
+               reinterpret_cast<uint8_t *>(src_i420_v_data), width >> 1,
+               reinterpret_cast<uint8_t *>(dst_i420_y_data), width,
+               reinterpret_cast<uint8_t *>(dst_i420_u_data), width >> 1,
+               reinterpret_cast<uint8_t *>(dst_i420_v_data), width >> 1,
+               width, height, kRotate90);
+
+    env->ReleaseByteArrayElements(src, _src, JNI_ABORT);
+    env->ReleaseByteArrayElements(dst, _dst, 0);
+
+}
+
+extern "C"
+JNIEXPORT
+void
+JNICALL
+i420ToNV21(JNIEnv *env, jobject thiz, jbyteArray src, jint width,
+           jint height, jbyteArray dst) {
+
+    // 获取数组指针
+    jbyte *_src = env->GetByteArrayElements(src, nullptr);
+    jbyte *_dst = env->GetByteArrayElements(dst, nullptr);
+
+
 
     env->ReleaseByteArrayElements(src, _src, JNI_ABORT);
     env->ReleaseByteArrayElements(dst, _dst, 0);
@@ -98,11 +172,14 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
             break;
         }
 
-        if (registNativeMethod(env, RTMPClientClassName, RTMPClientMethods, sizeof(RTMPClientMethods) / sizeof(RTMPClientMethods[0])) != JNI_OK) {
+        if (registNativeMethod(env, RTMPClientClassName, RTMPClientMethods,
+                               sizeof(RTMPClientMethods) / sizeof(RTMPClientMethods[0])) !=
+            JNI_OK) {
             break;
         }
 
-        if (registNativeMethod(env, YUVUtilClassName, YUVUtilMethods, sizeof(YUVUtilMethods) / sizeof(YUVUtilMethods[0])) != JNI_OK) {
+        if (registNativeMethod(env, YUVUtilClassName, YUVUtilMethods,
+                               sizeof(YUVUtilMethods) / sizeof(YUVUtilMethods[0])) != JNI_OK) {
             break;
         }
 
@@ -111,7 +188,6 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
     } while (0);
 
     return result;
-
 
 
 }

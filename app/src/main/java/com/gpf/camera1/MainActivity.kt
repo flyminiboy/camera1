@@ -1,8 +1,7 @@
 package com.gpf.camera1
 
-import android.graphics.BitmapFactory
-import android.graphics.ImageFormat
-import android.graphics.SurfaceTexture
+import android.Manifest
+import android.graphics.*
 import android.hardware.Camera
 import android.media.MediaCodec
 import android.media.MediaCodecInfo
@@ -16,6 +15,8 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.view.*
 import com.gpf.camera1.databinding.ActivityMainBinding
+import com.permissionx.guolindev.PermissionX
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.lang.Exception
 import java.util.*
@@ -76,7 +77,7 @@ class MainActivity : AppCompatActivity() {
             }
 
             mainTake.setOnClickListener {
-                flag = true
+                flag = false
             }
 
             mainTv.surfaceTextureListener = (object : TextureView.SurfaceTextureListener {
@@ -86,11 +87,17 @@ class MainActivity : AppCompatActivity() {
                     height: Int
                 ) {
                     surfaceTexture = surface
-                    if (hasCameraPermission() && hasWritePermission()) {
-                        startPreview()
-                    } else {
-                        requestCameraPermisson()
-                    }
+
+                    PermissionX.init(this@MainActivity)
+                        .permissions(Manifest.permission.CAMERA)
+                        .request { allGranted, grantedList, deniedList ->
+                            if (allGranted) {
+                                startPreview()
+                            } else {
+                                toast("These permissions are denied $deniedList")
+                            }
+                        }
+
                 }
 
                 override fun onSurfaceTextureSizeChanged(
@@ -118,27 +125,13 @@ class MainActivity : AppCompatActivity() {
 
         // TODO 优化 角度问题
         dis = windowManager.defaultDisplay.apply {
-            w = height
-            h = width
+            w = 1920
+            h = 1080
         }
 
         val rtmpClient = RTMPClient()
         rtmpClient.connect("fff")
 
-    }
-
-    override fun onRequestPermissionsResult(
-        requestCode: Int,
-        permissions: Array<out String>,
-        grantResults: IntArray
-    ) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (hasCameraPermission() && hasWritePermission()) {
-            startPreview()
-        } else {
-            toast("no permission")
-            finish()
-        }
     }
 
     override fun onDestroy() {
@@ -241,14 +234,13 @@ class MainActivity : AppCompatActivity() {
         val index = w * h
         for (i in index until data.size step 2) {
             res[i] = data[i + 1]
-            res[i+1] = data[i]
+            res[i + 1] = data[i]
         }
 
         return res
     }
 
     private fun startPreview() {
-
         if (isPreview) {
             return
         }
@@ -265,7 +257,8 @@ class MainActivity : AppCompatActivity() {
 
                 // TODO 优化2073600
                 params.previewFormat = ImageFormat.NV21
-                params.setPreviewSize(w, h)
+                // 先写死
+                params.setPreviewSize(1920, 1080)
 
 
                 it.parameters = params
@@ -290,18 +283,27 @@ class MainActivity : AppCompatActivity() {
                 val buffer = ByteArray(w * h * 3 / 2)
                 it.addCallbackBuffer(buffer)
                 it.setPreviewCallbackWithBuffer { data, camera ->
-                    if (!isRecord) {
-                        it.addCallbackBuffer(buffer)
-                        return@setPreviewCallbackWithBuffer
-                    }
                     // 保存一张图片，表示libyuv介入成功
-                    converHander.post {
-                        if (!flag) {
+                    if (!flag) {
+                        converHander.post {
+
+                            val startTime = System.currentTimeMillis()
                             logE("开始转换")
-                            val dst = ByteArray(data.size)
-                            YUVUtil.conver(data, w, h, dst)
-                            logE("结束转换,耗时 [ ")
-                            val bitmap = BitmapFactory.decodeByteArray(dst, 0, dst.size)
+                            val i420 = ByteArray(data.size)
+                            YUVUtil.nv21ToI420(data, w, h, i420) // NV21 -> I420
+                            val dst = ByteArray(i420.size)
+                            YUVUtil.rotateI420(i420, w, h, dst, 90)
+                            val nv21 = ByteArray(dst.size)
+                            YUVUtil.i420ToNV21(dst, w, h, nv21)
+                            // 开始旋转
+                            logE("结束转换,耗时 [ " + (System.currentTimeMillis() - startTime) + " ]")
+
+                            val yuvImg = YuvImage(nv21, ImageFormat.NV21, w, h, null)
+                            val out = ByteArrayOutputStream()
+                            yuvImg.compressToJpeg(Rect(0, 0, w, h), 100, out)
+                            val bytes = out.toByteArray()
+                            val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+
                             flag = true
                             runOnUiThread {
                                 // 展示
@@ -311,9 +313,14 @@ class MainActivity : AppCompatActivity() {
                                     setImageBitmap(bitmap)
                                 }
 
-                            }
-                        }
 
+                            }
+
+                        }
+                    }
+                    if (!isRecord) {
+                        it.addCallbackBuffer(buffer)
+                        return@setPreviewCallbackWithBuffer
                     }
                     encode(nv21Tonv12(data))
                     it.addCallbackBuffer(buffer)
@@ -324,12 +331,12 @@ class MainActivity : AppCompatActivity() {
                 isPreview = true
             }
 
-
         } catch (e: Exception) {
+            logE("fuck ${e.message}")
         }
     }
 
-    var flag = false
+    var flag = true
 
     private fun encode(data: ByteArray) {
         encoderHandler?.let { handler ->
