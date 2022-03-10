@@ -106,12 +106,13 @@ rotateI420(JNIEnv *env, jobject thiz, jbyteArray src, jint width,
     jbyte *dst_i420_u_data = _dst + src_y_size;
     jbyte *dst_i420_v_data = _dst + src_y_size + src_u_size;
 
+    // TODO 注意 这个地方旋转以后宽高的调整 ？？
     I420Rotate(reinterpret_cast<uint8_t *>(src_i420_y_data), width,
                reinterpret_cast<uint8_t *>(src_i420_u_data), width >> 1,
                reinterpret_cast<uint8_t *>(src_i420_v_data), width >> 1,
                reinterpret_cast<uint8_t *>(dst_i420_y_data), width,
-               reinterpret_cast<uint8_t *>(dst_i420_u_data), width >> 1,
-               reinterpret_cast<uint8_t *>(dst_i420_v_data), width >> 1,
+               reinterpret_cast<uint8_t *>(dst_i420_u_data), height >> 1,
+               reinterpret_cast<uint8_t *>(dst_i420_v_data), height >> 1,
                width, height, kRotate90);
 
     env->ReleaseByteArrayElements(src, _src, JNI_ABORT);
@@ -130,7 +131,25 @@ i420ToNV21(JNIEnv *env, jobject thiz, jbyteArray src, jint width,
     jbyte *_src = env->GetByteArrayElements(src, nullptr);
     jbyte *_dst = env->GetByteArrayElements(dst, nullptr);
 
+    // u 大小
+    jint src_y_size = width * height;
+    jint src_u_size = (width >> 1) * (height >> 1);
 
+    // Y 起始地址
+    jbyte *src_i420_y_data = _src;
+    jbyte *src_i420_u_data = _src + src_y_size;
+    jbyte *src_i420_v_data = _src + src_y_size + src_u_size;
+
+    jbyte *dst_nv21_y_data = _dst;
+    // VU 起始地址
+    jbyte *dst_nv21_vu_data = _dst + src_y_size;
+
+    I420ToNV21(reinterpret_cast<uint8_t *>(src_i420_y_data), width,
+               reinterpret_cast<uint8_t *>(src_i420_u_data), width >> 1,
+               reinterpret_cast<uint8_t *>(src_i420_v_data), width >> 1,
+               reinterpret_cast<uint8_t *>(dst_nv21_y_data), width,
+               reinterpret_cast<uint8_t *>(dst_nv21_vu_data), width,
+               width, height);
 
     env->ReleaseByteArrayElements(src, _src, JNI_ABORT);
     env->ReleaseByteArrayElements(dst, _dst, 0);
