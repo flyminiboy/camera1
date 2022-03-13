@@ -17,7 +17,8 @@ static JNINativeMethod RTMPClientMethods[] = {
 static JNINativeMethod YUVUtilMethods[] = {
         "nv21ToI420", "([BII[B)V", (void *) nv21ToI420,
         "i420ToNV21", "([BII[B)V", (void *) i420ToNV21,
-        "rotateI420", "([BII[BI)V", (void *) rotateI420
+        "rotateI420", "([BII[BI)V", (void *) rotateI420,
+        "nv21ToARGB", "([BII[B)V", (void *) nv21ToARGB
 };
 
 
@@ -153,6 +154,42 @@ i420ToNV21(JNIEnv *env, jobject thiz, jbyteArray src, jint width,
 
     env->ReleaseByteArrayElements(src, _src, JNI_ABORT);
     env->ReleaseByteArrayElements(dst, _dst, 0);
+
+}
+
+JNIEXPORT
+void
+JNICALL
+nv21ToARGB(JNIEnv *env, jobject thiz, jbyteArray src, jint width,
+                jint height, jbyteArray dst) {
+
+    jbyte *_src = env->GetByteArrayElements(src, nullptr);
+    jbyte *_dst = env->GetByteArrayElements(dst, nullptr);
+
+    jint src_y_size = width * height;
+
+    jbyte *src_y_data = _src;
+    jbyte *src_vu_data = _src + src_y_size;
+
+    jbyte *argb = _dst;
+
+
+    // TODO 一个神奇的地方
+
+//    这里值得注意的是，由于libyuv的ARGB和android bitmap的ARGB_8888的存储顺序是不一样的，
+//    因此如果想对应上android bitmap的ARGB_8888的存储顺序，
+//    将YUV420转换成ARGB_8888（也即本文所指的RGBA）时，
+//
+//    需要按以下规律转换：
+//    I420转RGBA使用libyuv的I420ToABGR函数
+//    YV12转RGBA使用libyuv的I420ToABGR函数
+//    NV12转RGBA使用libyuv的NV21ToARGB函数
+//    NV21转RGBA使用libyuv的NV12ToARGB函数
+
+    NV21ToABGR(reinterpret_cast<uint8_t *>(src_y_data), width,
+               reinterpret_cast<uint8_t *>(src_vu_data), width,
+               reinterpret_cast<uint8_t *>(argb), width * 4,
+               width, height);
 
 }
 

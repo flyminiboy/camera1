@@ -21,6 +21,10 @@ JNIEXPORT void JNICALL
 rotateI420(JNIEnv * env, jobject thiz, jbyteArray src, jint width,
            jint height, jbyteArray dst, jint degree);
 
+JNIEXPORT void JNICALL
+nv21ToARGB(JNIEnv *env, jobject thiz, jbyteArray src, jint width,
+        jint height, jbyteArray dst);
+
 }
 
 #endif

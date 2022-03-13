@@ -40,5 +40,18 @@ object YUVUtil {
         dst:ByteArray
     )
 
+    /**
+     * nv21 转 ARGB
+     * nv21 原始数据
+     * 宽
+     * 高
+     * ARGB目标数据
+     */
+    external fun nv21ToARGB(
+        src:ByteArray,
+        width: Int,
+        height: Int,
+        dst:ByteArray
+    )
 
 }

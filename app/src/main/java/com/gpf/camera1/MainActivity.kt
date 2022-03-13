@@ -7,19 +7,18 @@ import android.media.MediaCodec
 import android.media.MediaCodecInfo
 import android.media.MediaFormat
 import android.media.MediaMuxer
-import android.net.Uri
-import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
-import android.os.Environment
 import android.os.Handler
 import android.os.HandlerThread
 import android.view.*
+import androidx.appcompat.app.AppCompatActivity
 import com.gpf.camera1.databinding.ActivityMainBinding
 import com.permissionx.guolindev.PermissionX
 import java.io.ByteArrayOutputStream
 import java.io.File
-import java.lang.Exception
+import java.nio.ByteBuffer
 import java.util.*
+
 
 class MainActivity : AppCompatActivity() {
 
@@ -287,22 +286,31 @@ class MainActivity : AppCompatActivity() {
                     if (!flag) {
                         converHander.post {
 
+//                            val startTime = System.currentTimeMillis()
+//                            logE("开始转换")
+//                            val i420 = ByteArray(data.size)
+//                            YUVUtil.nv21ToI420(data, w, h, i420) // NV21 -> I420
+//                            val dst = ByteArray(i420.size)
+//                            YUVUtil.rotateI420(i420, w, h, dst, 90)
+//                            val nv21 = ByteArray(dst.size)
+//                            YUVUtil.i420ToNV21(dst, w, h, nv21)
+//                            // 开始旋转
+//                            logE("结束转换,耗时 [ " + (System.currentTimeMillis() - startTime) + " ]")
+//
+//                            val yuvImg = YuvImage(nv21, ImageFormat.NV21, w, h, null)
+//                            val out = ByteArrayOutputStream()
+//                            yuvImg.compressToJpeg(Rect(0, 0, w, h), 100, out)
+//                            val bytes = out.toByteArray()
+//                            val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+
                             val startTime = System.currentTimeMillis()
                             logE("开始转换")
-                            val i420 = ByteArray(data.size)
-                            YUVUtil.nv21ToI420(data, w, h, i420) // NV21 -> I420
-                            val dst = ByteArray(i420.size)
-                            YUVUtil.rotateI420(i420, w, h, dst, 90)
-                            val nv21 = ByteArray(dst.size)
-                            YUVUtil.i420ToNV21(dst, w, h, nv21)
-                            // 开始旋转
+                            val argb = ByteArray(data.size)
+                            YUVUtil.nv21ToARGB(data, w, h, argb)
+                            val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+                            bitmap.copyPixelsFromBuffer(ByteBuffer.wrap(argb))
                             logE("结束转换,耗时 [ " + (System.currentTimeMillis() - startTime) + " ]")
 
-                            val yuvImg = YuvImage(nv21, ImageFormat.NV21, w, h, null)
-                            val out = ByteArrayOutputStream()
-                            yuvImg.compressToJpeg(Rect(0, 0, w, h), 100, out)
-                            val bytes = out.toByteArray()
-                            val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
 
                             flag = true
                             runOnUiThread {
@@ -422,13 +430,21 @@ class MainActivity : AppCompatActivity() {
 }
 
 /**
- * nv21 数据格式为2个planar,也就是两个平面，第一个平面是所有的Y分量，而第二个平面是V和U交错平面
+ * nv21 Android相机数据 数据格式为2个planar,也就是两个平面，第一个平面是所有的Y分量，而第二个平面是V和U交错平面
  * yyyy
  * yyyy
  * yyyy
  * yyyy
  * vuvu
  * vuvu
+ *
+ * nv12 IOS相机数据 数据格式为2个planar,也就是两个平面，第一个平面是所有的Y分量，而第二个平面是U和V交错平面
+ * yyyy
+ * yyyy
+ * yyyy
+ * yyyy
+ * uvuv
+ * uvuv
  *
  * COLOR_FormatYUV420SemiPlanar 即YUV420SP
  * yyyy
@@ -438,7 +454,7 @@ class MainActivity : AppCompatActivity() {
  * uvuv
  * uvuv
  *
- * COLOR_FormatYUV420Planar 即YUV420P
+ * COLOR_FormatYUV420Planar 即YUV420P I420
  * yyyy
  * yyyy
  * yyyy
