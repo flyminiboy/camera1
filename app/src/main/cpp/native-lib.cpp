@@ -68,6 +68,15 @@ nv21ToI420(JNIEnv *env, jobject thiz, jbyteArray src, jint width,
     jbyte *dst_i420_v_data = _dst + src_y_size + src_u_size;
 
     // 理解 YUV stride
+//    YUV420 系列
+//    NV21
+//        Y: 跨距为 width
+//        VU: 跨距为 width
+//    I420P(YU12):
+//        Y: 跨距为 width
+//        U: 跨距为 width/2
+//        V: 跨距为 width/2
+//    ABGR: 跨距为 4 *width
 
 
     NV21ToI420(reinterpret_cast<const uint8_t *>(src_nv21_y_data), width,
@@ -177,14 +186,12 @@ nv21ToARGB(JNIEnv *env, jobject thiz, jbyteArray src, jint width,
     // TODO 一个神奇的地方
 
 //    这里值得注意的是，由于libyuv的ARGB和android bitmap的ARGB_8888的存储顺序是不一样的，
-//    因此如果想对应上android bitmap的ARGB_8888的存储顺序，
-//    将YUV420转换成ARGB_8888（也即本文所指的RGBA）时，
+//    ARGB_8888的存储顺序实际上是RGBA,对应的是libyuv的ABGR
+
+// NV21ToABGR
+
+// NV21ToARGB 存在色差
 //
-//    需要按以下规律转换：
-//    I420转RGBA使用libyuv的I420ToABGR函数
-//    YV12转RGBA使用libyuv的I420ToABGR函数
-//    NV12转RGBA使用libyuv的NV21ToARGB函数
-//    NV21转RGBA使用libyuv的NV12ToARGB函数
 
     NV21ToABGR(reinterpret_cast<uint8_t *>(src_y_data), width,
                reinterpret_cast<uint8_t *>(src_vu_data), width,

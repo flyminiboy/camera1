@@ -305,7 +305,7 @@ class MainActivity : AppCompatActivity() {
 
                             val startTime = System.currentTimeMillis()
                             logE("开始转换")
-                            val argb = ByteArray(data.size)
+                            val argb = ByteArray(w * h * 4)
                             YUVUtil.nv21ToARGB(data, w, h, argb)
                             val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
                             bitmap.copyPixelsFromBuffer(ByteBuffer.wrap(argb))
