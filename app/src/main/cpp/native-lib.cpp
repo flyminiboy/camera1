@@ -15,6 +15,7 @@ static JNINativeMethod RTMPClientMethods[] = {
         "connect", "(Ljava/lang/String;)I", (jint *) connect
 };
 static JNINativeMethod YUVUtilMethods[] = {
+        "nv21ToNV12", "([BII[B)V", (void *) nv21ToNV12,
         "nv21ToI420", "([BII[B)V", (void *) nv21ToI420,
         "i420ToNV21", "([BII[B)V", (void *) i420ToNV21,
         "rotateI420", "([BII[BI)V", (void *) rotateI420,
@@ -37,6 +38,34 @@ connect(JNIEnv *env, jobject thiz, jstring path) {
     } while (0);
 
     return result;
+
+}
+
+extern "C"
+JNIEXPORT
+void
+JNICALL
+nv21ToNV12(JNIEnv *env, jobject thiz, jbyteArray src, jint width, jint height, jbyteArray dst) {
+
+    jbyte *_src = env->GetByteArrayElements(src, nullptr);
+    jbyte *_dst = env->GetByteArrayElements(dst, nullptr);
+
+    jint src_y_size = width * height;
+
+    jbyte *src_nv21_y_data = _src;
+    jbyte *src_nv21_vu_data = _src + src_y_size;
+
+    jbyte *dst_nv12_y_data = _dst;
+    jbyte *dst_nv12_uv_data = _dst + src_y_size;
+
+    NV21ToNV12(reinterpret_cast<const uint8_t *>(src_nv21_y_data), width,
+               reinterpret_cast<const uint8_t *>(src_nv21_vu_data), width / 2,
+               reinterpret_cast<uint8_t *>(dst_nv12_y_data), width,
+               reinterpret_cast<uint8_t *>(dst_nv12_uv_data), width / 2,
+               width,height);
+
+    env->ReleaseByteArrayElements(src, _src, JNI_ABORT);
+    env->ReleaseByteArrayElements(dst, _dst, 0);
 
 }
 
@@ -170,7 +199,7 @@ JNIEXPORT
 void
 JNICALL
 nv21ToARGB(JNIEnv *env, jobject thiz, jbyteArray src, jint width,
-                jint height, jbyteArray dst) {
+           jint height, jbyteArray dst) {
 
     jbyte *_src = env->GetByteArrayElements(src, nullptr);
     jbyte *_dst = env->GetByteArrayElements(dst, nullptr);

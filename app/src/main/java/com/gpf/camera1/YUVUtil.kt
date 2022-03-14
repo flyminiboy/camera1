@@ -2,6 +2,17 @@ package com.gpf.camera1
 
 object YUVUtil {
 
+
+    /**
+     * nv21 转 nv12
+     *
+     * nv21原始数据源
+     * 宽
+     * 高
+     * nv12目标数据
+     */
+    external fun nv21ToNV12(src: ByteArray, width: Int, height: Int, dst: ByteArray)
+
     /**
      * nv21 转 I420
      * nv21原始数据

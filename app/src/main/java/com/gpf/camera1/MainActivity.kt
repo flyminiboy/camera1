@@ -330,7 +330,19 @@ class MainActivity : AppCompatActivity() {
                         it.addCallbackBuffer(buffer)
                         return@setPreviewCallbackWithBuffer
                     }
-                    encode(nv21Tonv12(data))
+
+                    logE("native libyuv 开始解析")
+                    val startTime = System.currentTimeMillis()
+                    val nv12 = ByteArray(data.size)
+                    YUVUtil.nv21ToNV12(data, w, h, nv12) // 3 - 5 毫秒
+                    logE("native libyuv 解析结束 [ " + (System.currentTimeMillis() - startTime) + " ]")
+
+                    logE("java 开始解析")
+                    val startTime2 = System.currentTimeMillis()
+                    val dst = nv21Tonv12(data) // 12 - 15毫秒
+                    logE("java 解析结束 [ " + (System.currentTimeMillis() - startTime) + " ]")
+
+                    encode(dst)
                     it.addCallbackBuffer(buffer)
                 }
 
@@ -347,68 +359,66 @@ class MainActivity : AppCompatActivity() {
     var flag = true
 
     private fun encode(data: ByteArray) {
-        encoderHandler?.let { handler ->
-            handler.post {
-                synchronized(lock) {
-                    if (!isRecord) {
-                        return@post
-                    }
-                    // 子线程开始处理数据 编码
-                    mediaCodec?.let { mc ->
-                        // 得到输入缓存队列的索引
-                        val inputIndex = mc.dequeueInputBuffer(-1)
-                        if (inputIndex > 0) {
-                            // 根据输入缓存区的索引获取输入缓存区
-                            mc.getInputBuffer(inputIndex)?.let { buffer ->
-                                buffer.clear()
-                                buffer.put(data, 0, data.size) // 填充数据
+        encoderHandler.post {
+            synchronized(lock) {
+                if (!isRecord) {
+                    return@post
+                }
+                // 子线程开始处理数据 编码
+                mediaCodec?.let { mc ->
+                    // 得到输入缓存队列的索引
+                    val inputIndex = mc.dequeueInputBuffer(-1)
+                    if (inputIndex > 0) {
+                        // 根据输入缓存区的索引获取输入缓存区
+                        mc.getInputBuffer(inputIndex)?.let { buffer ->
+                            buffer.clear()
+                            buffer.put(data, 0, data.size) // 填充数据
 
-                                //将缓冲区在放回队列 内部开始编码
-                                mc.queueInputBuffer(
-                                    inputIndex, 0, data.size,
-                                    System.nanoTime() / 1000, 0
-                                )
+                            //将缓冲区在放回队列 内部开始编码
+                            mc.queueInputBuffer(
+                                inputIndex, 0, data.size,
+                                System.nanoTime() / 1000, 0
+                            )
+                        }
+
+                        while (true) {
+                            // 开始获取输出缓冲区数据 - 编码以后的数据
+                            val bufferInfo = MediaCodec.BufferInfo()
+                            val outputIndex = mc.dequeueOutputBuffer(bufferInfo, 10_000)
+                            // 稍后重试
+                            if (outputIndex == MediaCodec.INFO_TRY_AGAIN_LATER) {
+                                break
                             }
-
-                            while (true) {
-                                // 开始获取输出缓冲区数据 - 编码以后的数据
-                                val bufferInfo = MediaCodec.BufferInfo()
-                                val outputIndex = mc.dequeueOutputBuffer(bufferInfo, 10_000)
-                                // 稍后重试
-                                if (outputIndex == MediaCodec.INFO_TRY_AGAIN_LATER) {
-                                    break
+                            //输出格式发生变化 第一次总会调用，所以在这个地方开启混合器
+                            if (outputIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
+                                mediaMuxer?.let { mm ->
+                                    val nmf = mc.outputFormat
+                                    videoTrack = mm.addTrack(nmf)
+                                    mm.start() // 开始工作
                                 }
-                                //输出格式发生变化 第一次总会调用，所以在这个地方开启混合器
-                                if (outputIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
+                                continue
+                            }
+                            if (outputIndex == MediaCodec.INFO_OUTPUT_BUFFERS_CHANGED) {
+                                continue
+                            }
+                            // 获取输出缓冲区
+
+                            mc.getOutputBuffer(outputIndex)?.let { buffer ->
+                                // 当前的buffer是配置信息
+                                if ((bufferInfo.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG) != 0) {
+                                    bufferInfo.size = 0
+                                }
+                                if (bufferInfo.size != 0) {
+
                                     mediaMuxer?.let { mm ->
-                                        val nmf = mc.outputFormat
-                                        videoTrack = mm.addTrack(nmf)
-                                        mm.start() // 开始工作
-                                    }
-                                    continue
-                                }
-                                if (outputIndex == MediaCodec.INFO_OUTPUT_BUFFERS_CHANGED) {
-                                    continue
-                                }
-                                // 获取输出缓冲区
-
-                                mc.getOutputBuffer(outputIndex)?.let { buffer ->
-                                    // 当前的buffer是配置信息
-                                    if ((bufferInfo.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG) != 0) {
-                                        bufferInfo.size = 0
-                                    }
-                                    if (bufferInfo.size != 0) {
-
-                                        mediaMuxer?.let { mm ->
-                                            // 设置数据开始偏移量
-                                            buffer.position(bufferInfo.offset)
-                                            // 设置数据长度
-                                            buffer.limit(bufferInfo.offset + bufferInfo.size)
-                                            // 混合器写到MP4文件中
-                                            mm.writeSampleData(videoTrack, buffer, bufferInfo)
-                                            // 释放输出数据缓冲区
-                                            mc.releaseOutputBuffer(outputIndex, false)
-                                        }
+                                        // 设置数据开始偏移量
+                                        buffer.position(bufferInfo.offset)
+                                        // 设置数据长度
+                                        buffer.limit(bufferInfo.offset + bufferInfo.size)
+                                        // 混合器写到MP4文件中
+                                        mm.writeSampleData(videoTrack, buffer, bufferInfo)
+                                        // 释放输出数据缓冲区
+                                        mc.releaseOutputBuffer(outputIndex, false)
                                     }
                                 }
                             }

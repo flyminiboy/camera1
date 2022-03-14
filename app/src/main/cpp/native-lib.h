@@ -14,6 +14,10 @@ nv21ToI420(JNIEnv * env, jobject thiz, jbyteArray src, jint width,
        jint height, jbyteArray dst);
 
 JNIEXPORT void JNICALL
+nv21ToNV12(JNIEnv * env, jobject thiz, jbyteArray src, jint width,
+           jint height, jbyteArray dst);
+
+JNIEXPORT void JNICALL
 i420ToNV21(JNIEnv * env, jobject thiz, jbyteArray src, jint width,
            jint height, jbyteArray dst);
 
