@@ -1,20 +1,24 @@
 package com.gpf.camera1
 
 import android.Manifest
-import android.graphics.*
+import android.graphics.Bitmap
+import android.graphics.ImageFormat
+import android.graphics.SurfaceTexture
 import android.hardware.Camera
 import android.media.MediaCodec
 import android.media.MediaCodecInfo
 import android.media.MediaFormat
 import android.media.MediaMuxer
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.HandlerThread
+import android.util.Log
 import android.view.*
+import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AppCompatActivity
 import com.gpf.camera1.databinding.ActivityMainBinding
 import com.permissionx.guolindev.PermissionX
-import java.io.ByteArrayOutputStream
 import java.io.File
 import java.nio.ByteBuffer
 import java.util.*
@@ -32,6 +36,7 @@ class MainActivity : AppCompatActivity() {
 
     private var isRecord = false
     private var isPreview = false
+    private var isMuxer = false
 
     private val encoderThread = HandlerThread("encode")
     private val encoderHandler by lazy {
@@ -77,6 +82,10 @@ class MainActivity : AppCompatActivity() {
 
             mainTake.setOnClickListener {
                 flag = false
+            }
+
+            mainTest.setOnClickListener {
+                test()
             }
 
             mainTv.surfaceTextureListener = (object : TextureView.SurfaceTextureListener {
@@ -163,11 +172,14 @@ class MainActivity : AppCompatActivity() {
             mediaCodec?.let { mediaCodec ->
                 mediaCodec.stop()
                 mediaCodec.release()
-                this.mediaCodec = null
+//                this.mediaCodec = null
 
-                mediaMuxer?.let { mediaMuxer -> // 这个段代码不写，视频黑屏无法播放，报错 moov atom not found
-                    mediaMuxer.stop()
-                    mediaMuxer.release()
+                if (isMuxer) {
+                    mediaMuxer?.let { mediaMuxer -> // 这个段代码不写，视频黑屏无法播放，报错 moov atom not found
+                        mediaMuxer.stop()
+                        mediaMuxer.release()
+                        isMuxer = false
+                    }
                 }
 
                 isRecord = false
@@ -177,11 +189,38 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    var a = false
+
+    @RequiresApi(Build.VERSION_CODES.M)
+    private fun test() {
+
+        if (!a) {
+            mediaCodec?.stop()
+            a = true
+            isRecord = false
+        } else {
+            try {
+                val param = Bundle()
+                param.putInt(MediaCodec.PARAMETER_KEY_REQUEST_SYNC_FRAME, 0)
+                param.putInt(MediaCodec.PARAMETER_KEY_VIDEO_BITRATE, 550 * 1000)
+                mediaCodec?.setParameters(param)
+            } catch (e: Exception) {
+
+                if (e is MediaCodec.CodecException) {
+                    logE("${e.errorCode} - $e")
+                } else {
+                    logE("${e.stackTraceToString()}")
+                }
+            }
+        }
+    }
+
     private fun startRecord() {
 
         if (isRecord) {
             return
         }
+
 
         val mediaFormat = MediaFormat.createVideoFormat(
             MediaFormat.MIMETYPE_VIDEO_AVC, w, h
@@ -199,8 +238,12 @@ class MainActivity : AppCompatActivity() {
 
         mediaCodec?.let { mediaCodec ->
 
-            mediaCodec.configure(mediaFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
-            mediaCodec.start()
+            try {
+                mediaCodec.configure(mediaFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+                mediaCodec.start()
+            } catch (e: Exception) {
+                Log.e("fuck", "${e}")
+            }
 
 
             //初始化 MediaMuxer（混合器） 将H264文件打包成MP4
@@ -255,6 +298,11 @@ class MainActivity : AppCompatActivity() {
                 val params = it.parameters
 
                 // TODO 优化2073600
+
+                params.supportedVideoSizes.map {
+                    logE("video size ${it.width}-${it.height}")
+                }
+
                 params.previewFormat = ImageFormat.NV21
                 // 先写死
                 params.setPreviewSize(1920, 1080)
@@ -361,70 +409,74 @@ class MainActivity : AppCompatActivity() {
     private fun encode(data: ByteArray) {
         encoderHandler.post {
             synchronized(lock) {
-                if (!isRecord) {
-                    return@post
-                }
-                // 子线程开始处理数据 编码
-                mediaCodec?.let { mc ->
-                    // 得到输入缓存队列的索引
-                    val inputIndex = mc.dequeueInputBuffer(-1)
-                    if (inputIndex > 0) {
-                        // 根据输入缓存区的索引获取输入缓存区
-                        mc.getInputBuffer(inputIndex)?.let { buffer ->
-                            buffer.clear()
-                            buffer.put(data, 0, data.size) // 填充数据
+                try {
+                    if (!isRecord) {
+                        return@post
+                    }
+                    // 子线程开始处理数据 编码
+                    mediaCodec?.let { mc ->
+                        // 得到输入缓存队列的索引
+                        val inputIndex = mc.dequeueInputBuffer(-1)
+                        if (inputIndex > 0) {
+                            // 根据输入缓存区的索引获取输入缓存区
+                            mc.getInputBuffer(inputIndex)?.let { buffer ->
+                                buffer.clear()
+                                buffer.put(data, 0, data.size) // 填充数据
 
-                            //将缓冲区在放回队列 内部开始编码
-                            mc.queueInputBuffer(
-                                inputIndex, 0, data.size,
-                                System.nanoTime() / 1000, 0
-                            )
-                        }
-
-                        while (true) {
-                            // 开始获取输出缓冲区数据 - 编码以后的数据
-                            val bufferInfo = MediaCodec.BufferInfo()
-                            val outputIndex = mc.dequeueOutputBuffer(bufferInfo, 10_000)
-                            // 稍后重试
-                            if (outputIndex == MediaCodec.INFO_TRY_AGAIN_LATER) {
-                                break
+                                //将缓冲区在放回队列 内部开始编码
+                                mc.queueInputBuffer(
+                                    inputIndex, 0, data.size,
+                                    System.nanoTime() / 1000, 0
+                                )
                             }
-                            //输出格式发生变化 第一次总会调用，所以在这个地方开启混合器
-                            if (outputIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
-                                mediaMuxer?.let { mm ->
-                                    val nmf = mc.outputFormat
-                                    videoTrack = mm.addTrack(nmf)
-                                    mm.start() // 开始工作
+
+                            while (true) {
+                                // 开始获取输出缓冲区数据 - 编码以后的数据
+                                val bufferInfo = MediaCodec.BufferInfo()
+                                val outputIndex = mc.dequeueOutputBuffer(bufferInfo, 10_000)
+                                // 稍后重试
+                                if (outputIndex == MediaCodec.INFO_TRY_AGAIN_LATER) {
+                                    break
                                 }
-                                continue
-                            }
-                            if (outputIndex == MediaCodec.INFO_OUTPUT_BUFFERS_CHANGED) {
-                                continue
-                            }
-                            // 获取输出缓冲区
-
-                            mc.getOutputBuffer(outputIndex)?.let { buffer ->
-                                // 当前的buffer是配置信息
-                                if ((bufferInfo.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG) != 0) {
-                                    bufferInfo.size = 0
-                                }
-                                if (bufferInfo.size != 0) {
-
+                                //输出格式发生变化 第一次总会调用，所以在这个地方开启混合器
+                                if (outputIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
                                     mediaMuxer?.let { mm ->
-                                        // 设置数据开始偏移量
-                                        buffer.position(bufferInfo.offset)
-                                        // 设置数据长度
-                                        buffer.limit(bufferInfo.offset + bufferInfo.size)
-                                        // 混合器写到MP4文件中
-                                        mm.writeSampleData(videoTrack, buffer, bufferInfo)
-                                        // 释放输出数据缓冲区
-                                        mc.releaseOutputBuffer(outputIndex, false)
+                                        val nmf = mc.outputFormat
+                                        videoTrack = mm.addTrack(nmf)
+                                        mm.start() // 开始工作
+                                        isMuxer = true;
+                                        Log.e("fuck", "开始工作")
+                                    }
+                                    continue
+                                }
+                                if (outputIndex == MediaCodec.INFO_OUTPUT_BUFFERS_CHANGED) {
+                                    continue
+                                }
+                                // 获取输出缓冲区
+
+                                mc.getOutputBuffer(outputIndex)?.let { buffer ->
+                                    // 当前的buffer是配置信息
+                                    if ((bufferInfo.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG) != 0) {
+                                        bufferInfo.size = 0
+                                    }
+                                    if (bufferInfo.size != 0) {
+
+                                        mediaMuxer?.let { mm ->
+                                            // 设置数据开始偏移量
+                                            buffer.position(bufferInfo.offset)
+                                            // 设置数据长度
+                                            buffer.limit(bufferInfo.offset + bufferInfo.size)
+                                            // 混合器写到MP4文件中
+                                            mm.writeSampleData(videoTrack, buffer, bufferInfo)
+                                            // 释放输出数据缓冲区
+                                            mc.releaseOutputBuffer(outputIndex, false)
+                                        }
                                     }
                                 }
                             }
                         }
                     }
-                }
+                } catch (e:Exception) {}
             }
         }
     }
